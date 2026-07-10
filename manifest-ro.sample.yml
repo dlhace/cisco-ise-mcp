@@ -1,0 +1,33 @@
+# Sample READ-ONLY Cloud Foundry manifest. COPY to manifest-ro.yml (gitignored) and edit.
+# Target org/space: ESM / POC. No real secrets — inject via your pipeline/secret store.
+---
+applications:
+  - name: cisco-ise-mcp-ro
+    memory: 512M
+    disk_quota: 1G
+    instances: 1
+    buildpacks:
+      - python_buildpack
+    command: python -m cisco_ise_mcp
+    health-check-type: http
+    health-check-http-endpoint: /healthz
+    routes:
+      # Internal default-domain route validated first; external route fronted by F5 later.
+      - route: cisco-ise-mcp.<cloudfoundry-default-domain>
+      - route: cisco-ise-mcp.churchofjesuschrist.org
+    env:
+      MCP_TRANSPORT: streamable-http
+      MCP_PORT: "8080"
+      ISE_BASE_URL: https://REPLACE_ISE_VIP
+      ISE_VERSION: "3.2"
+      ISE_VERIFY_SSL: "true"
+      # Read-only deployment commonly uses a read-only ISE service account:
+      ISE_AUTH_MODE: service_account
+      ISE_MCP_MODE: readonly
+      ISE_ENABLE_DANGEROUS_TOOLS: "false"
+      LOG_LEVEL: INFO
+      AUDIT_LOG_ENABLED: "true"
+      # Injected by pipeline — do NOT commit real values:
+      # ISE_USERNAME: REPLACE_FROM_PIPELINE
+      # ISE_PASSWORD: REPLACE_FROM_PIPELINE
+      # or ISE_ENCODED_AUTH: REPLACE_FROM_PIPELINE

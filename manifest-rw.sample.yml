@@ -1,0 +1,32 @@
+# Sample READ/WRITE Cloud Foundry manifest. COPY to manifest-rw.yml (gitignored) and edit.
+# Target org/space: ESM / POC. No real secrets — inject via your pipeline/secret store.
+# Read/write prefers passthrough so writes run as the authenticated ISE user (ISE RBAC applies).
+---
+applications:
+  - name: cisco-ise-mcp-rw
+    memory: 512M
+    disk_quota: 1G
+    instances: 1
+    buildpacks:
+      - python_buildpack
+    command: python -m cisco_ise_mcp
+    health-check-type: http
+    health-check-http-endpoint: /healthz
+    routes:
+      - route: cisco-ise-mcp-rw.<cloudfoundry-default-domain>
+    env:
+      MCP_TRANSPORT: streamable-http
+      MCP_PORT: "8080"
+      ISE_BASE_URL: https://REPLACE_ISE_VIP
+      ISE_VERSION: "3.2"
+      ISE_VERIFY_SSL: "true"
+      ISE_AUTH_MODE: passthrough
+      ISE_MCP_MODE: readwrite
+      # Destructive tools stay off unless explicitly enabled:
+      ISE_ENABLE_DANGEROUS_TOOLS: "false"
+      ISE_SESSION_TTL_SECONDS: "3600"
+      ISE_SESSION_IDLE_TIMEOUT_SECONDS: "900"
+      MCP_SESSION_HEADER: X-MCP-Session
+      LOG_LEVEL: INFO
+      AUDIT_LOG_ENABLED: "true"
+      # Passthrough needs no ISE service creds; users authenticate via ise_login.

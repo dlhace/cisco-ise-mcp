@@ -1,0 +1,16 @@
+{
+  "ERSEndPoint": {
+    "id": "bb4430b0-0000-0000-0000-000000000000",
+    "name": "F8:ED:FC:F6:3C:3E",
+    "description": "",
+    "mac": "F8:ED:FC:F6:3C:3E",
+    "profileId": "0b0c84a0-0000-0000-0000-000000000000",
+    "staticProfileAssignment": false,
+    "groupId": "b10b85b0-0000-0000-0000-000000000000",
+    "staticGroupAssignment": true,
+    "portalUser": "",
+    "identityStore": "",
+    "ipAddress": "10.89.26.77",
+    "customAttributes": { "customAttributes": {} }
+  }
+}

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sessionParameters>
+  <passed>true</passed>
+  <user_name>host/printer-r7-117</user_name>
+  <calling_station_id>F8:ED:FC:F6:3C:3E</calling_station_id>
+  <framed_ip_address>10.89.26.77</framed_ip_address>
+  <nas_ip_address>10.89.0.1</nas_ip_address>
+  <nas_port_id>GigabitEthernet1/0/17</nas_port_id>
+  <authorization_rule>Printers_Permit</authorization_rule>
+  <session_state>STARTED</session_state>
+  <security_group>Printers</security_group>
+  <acs_server>ise-psn-01</acs_server>
+</sessionParameters>

@@ -1,0 +1,29 @@
+# Sample base Cloud Foundry manifest. COPY to manifest.yml (gitignored) and edit.
+# Target org/space: ESM / POC. No real secrets here — inject via your pipeline.
+---
+applications:
+  - name: cisco-ise-mcp
+    memory: 512M
+    disk_quota: 1G
+    instances: 1
+    buildpacks:
+      - python_buildpack
+    command: python -m cisco_ise_mcp
+    health-check-type: http
+    health-check-http-endpoint: /healthz
+    routes:
+      - route: cisco-ise-mcp.<cloudfoundry-default-domain>
+    env:
+      MCP_TRANSPORT: streamable-http
+      MCP_PORT: "8080"                      # CF sets $PORT; see docs/cloud-foundry.md
+      ISE_BASE_URL: https://REPLACE_ISE_VIP
+      ISE_VERSION: "3.2"
+      ISE_VERIFY_SSL: "true"
+      ISE_AUTH_MODE: passthrough
+      ISE_MCP_MODE: readonly
+      LOG_LEVEL: INFO
+      AUDIT_LOG_ENABLED: "true"
+      # Secrets (ISE_USERNAME/ISE_PASSWORD/ISE_ENCODED_AUTH) come from the pipeline,
+      # NOT from this file. Example only:
+      # ISE_USERNAME: REPLACE_FROM_PIPELINE
+      # ISE_PASSWORD: REPLACE_FROM_PIPELINE

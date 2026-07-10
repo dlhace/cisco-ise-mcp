@@ -1,0 +1,39 @@
+# --- secrets / env ---
+.env
+.env.*
+!.env.example
+
+# --- real Cloud Foundry manifests (samples are committed) ---
+manifest.yml
+manifest-ro.yml
+manifest-rw.yml
+
+# --- keys / certs ---
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+
+# --- python ---
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# --- editors ---
+.vscode/
+.idea/
+
+# --- coverage / logs ---
+htmlcov/
+.coverage
+coverage.xml
+logs/
+*.log
