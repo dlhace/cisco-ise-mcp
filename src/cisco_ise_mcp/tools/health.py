@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from .. import responses
-from ..auth.base import current_session_id
 from ..auth.passthrough import PassthroughProvider
 from . import Deps, run
 
@@ -65,7 +64,7 @@ def register(mcp, deps: Deps) -> None:
         """Invalidate the current MCP session (passthrough mode)."""
         if not isinstance(deps.provider, PassthroughProvider):
             return responses.ok({"logged_out": False, "reason": "not in passthrough mode"})
-        deleted = deps.provider.logout(current_session_id.get())
+        deleted = deps.provider.logout(deps.session_id())
         return responses.ok({"logged_out": bool(deleted)})
 
     @mcp.tool()

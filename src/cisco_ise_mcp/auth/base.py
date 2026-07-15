@@ -44,13 +44,9 @@ class AuthContext:
     __str__ = __repr__
 
 
-# Set per-request by the transport layer (middleware / tool dependency).
+# Optional: a resolved AuthContext may be stashed here by future providers.
 current_auth: contextvars.ContextVar[AuthContext | None] = contextvars.ContextVar(
     "current_auth", default=None
-)
-# MCP session id extracted from the configured session header (or Bearer token).
-current_session_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "current_session_id", default=None
 )
 
 

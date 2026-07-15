@@ -117,17 +117,30 @@ class IseClient:
         await asyncio.sleep(min(2 ** attempt * 0.5, 8))
 
     async def validate_credentials(self, username: str, password: str) -> bool:
-        """Cheap authenticated probe used by passthrough login. 2xx => valid,
-        401 => invalid. Other errors propagate so login fails closed."""
+        """Passthrough login probe. Fails CLOSED.
+
+        Reject empty creds outright. Then probe /ers/config/node — the ERS resource
+        that reliably returns 401 for bad/empty auth (unlike /endpoint, /internaluser,
+        etc., which have been observed serving 200 without valid auth). Because ISE's
+        ERS auth enforcement can be INCONSISTENT across the deployment VIP (the same
+        request has been seen flapping 200<->401), probe several times and require
+        EVERY probe to succeed; any single 401 => invalid. This makes an accidental
+        permissive 200 insufficient to accept bad credentials.
+
+        NOTE: this is defense-in-depth only. The real fix is ISE-side (enforce ERS
+        auth uniformly on all PSNs) plus network-layer access control on the route.
+        """
+        if not username or not password:
+            return False
         probe = AuthContext(username=username, mode="passthrough", _password=password)
-        try:
-            # /ers/config/node is a small, always-present ERS resource on 3.x.
-            await self.request("GET", self._cfg.ers_base, "/ers/config/node?size=1", probe)
-            return True
-        except IseApiError as exc:
-            if exc.status == 401:
-                return False
-            raise
+        for _ in range(3):
+            try:
+                await self.request("GET", self._cfg.ers_base, "/ers/config/node?size=1", probe)
+            except IseApiError as exc:
+                if exc.status == 401:
+                    return False
+                raise  # transport/other error -> fail closed at caller
+        return True
 
 
 def _safe_body(resp: httpx.Response) -> str:

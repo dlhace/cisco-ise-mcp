@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 
-from .auth.base import current_session_id
 from .auth.passthrough import PassthroughProvider
 from .auth.service_account import ServiceAccountProvider
 from .auth.session_store import SessionStore
@@ -19,31 +18,6 @@ from .logging_config import configure_logging
 from .tools import Deps, register_all
 
 _log = logging.getLogger("cisco_ise_mcp.server")
-
-
-class SessionHeaderMiddleware:
-    """ASGI middleware: set current_session_id from the session header / Bearer."""
-
-    def __init__(self, app, header: str):
-        self.app = app
-        self._header = header.lower().encode()
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-        headers = dict(scope.get("headers") or [])
-        sid = headers.get(self._header)
-        sid = sid.decode() if sid else None
-        if not sid:
-            authz = headers.get(b"authorization", b"")
-            if authz[:7].lower() == b"bearer ":
-                sid = authz[7:].decode().strip()
-        token = current_session_id.set(sid)
-        try:
-            await self.app(scope, receive, send)
-        finally:
-            current_session_id.reset(token)
 
 
 def build(cfg: Config | None = None):
@@ -84,12 +58,11 @@ def build(cfg: Config | None = None):
 def build_http_app(cfg: Config | None = None):
     """Return a Starlette ASGI app for HTTP deployment (Docker / Cloud Foundry).
 
-    /healthz is registered as a FastMCP custom route in build(); the httpx client is
-    closed at process exit (no explicit shutdown hook needed)."""
-    mcp, deps, _client = build(cfg)
-    app = mcp.streamable_http_app()
-    app.add_middleware(SessionHeaderMiddleware, header=deps.cfg.session_header)
-    return app
+    The MCP session id is read per-call from the request context inside the tools
+    (see tools.mcp_session_id); /healthz is a FastMCP custom route registered in
+    build(); the httpx client is closed at process exit."""
+    mcp, _deps, _client = build(cfg)
+    return mcp.streamable_http_app()
 
 
 def main() -> None:

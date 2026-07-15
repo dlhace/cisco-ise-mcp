@@ -10,13 +10,38 @@ from dataclasses import dataclass
 from typing import Awaitable, Callable
 
 from ..audit import audit
-from ..auth.base import AuthContext, AuthProvider, current_session_id
+from ..auth.base import AuthContext, AuthProvider
 from ..config import Config
 from ..ise.ers import ErsApi
 from ..ise.mnt import MntApi
 from .. import responses, validation
 
 _log = logging.getLogger("cisco_ise_mcp.tools")
+
+
+def mcp_session_id(header_name: str) -> str | None:
+    """Read the MCP session id from the CURRENT request's headers.
+
+    Uses the SDK request context (set in the tool's own task) rather than an ASGI
+    contextvar, because FastMCP's streamable-HTTP runs tool calls in a different
+    task than the ASGI request. Falls back to `Authorization: Bearer`. Returns None
+    off an HTTP transport (e.g. stdio). mcp is imported lazily so this module stays
+    importable without runtime deps."""
+    try:
+        from mcp.server.lowlevel.server import request_ctx
+
+        rc = request_ctx.get()
+    except (LookupError, ImportError):
+        return None
+    headers = getattr(getattr(rc, "request", None), "headers", None)
+    if not headers:
+        return None
+    sid = headers.get(header_name) or headers.get(header_name.lower())
+    if not sid:
+        authz = headers.get("authorization", "")
+        if authz.lower().startswith("bearer "):
+            sid = authz[7:].strip()
+    return sid
 
 
 @dataclass
@@ -26,8 +51,11 @@ class Deps:
     mnt: MntApi
     provider: AuthProvider
 
+    def session_id(self) -> str | None:
+        return mcp_session_id(self.cfg.session_header)
+
     async def resolve_auth(self) -> AuthContext:
-        return await self.provider.resolve(session_id=current_session_id.get())
+        return await self.provider.resolve(session_id=self.session_id())
 
 
 async def run(
