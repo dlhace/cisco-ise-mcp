@@ -132,14 +132,28 @@ class IseClient:
         """
         if not username or not password:
             return False
-        probe = AuthContext(username=username, mode="passthrough", _password=password)
-        for _ in range(3):
+        url = f"{self._cfg.ers_base}/ers/config/node?size=1"
+        # Fresh connection per probe (Connection: close) so probes aren't pinned to a
+        # single PSN behind the VIP; reject on ANY 401. This raises the chance of
+        # hitting an enforcing node when a permissive one would wrongly accept.
+        for _ in range(4):
             try:
-                await self.request("GET", self._cfg.ers_base, "/ers/config/node?size=1", probe)
-            except IseApiError as exc:
-                if exc.status == 401:
-                    return False
-                raise  # transport/other error -> fail closed at caller
+                async with httpx.AsyncClient(
+                    verify=self._cfg.verify_ssl, timeout=self._cfg.timeout_seconds
+                ) as c:
+                    r = await c.get(
+                        url,
+                        auth=(username, password),
+                        headers={"Accept": "application/json", "Connection": "close"},
+                    )
+            except httpx.TransportError as exc:
+                raise IseApiError(f"credential validation transport error: {exc}") from exc
+            if r.status_code == 401:
+                return False
+            if r.status_code >= 400:
+                raise IseApiError(
+                    f"unexpected validation status {r.status_code}", status=r.status_code
+                )
         return True
 
 
