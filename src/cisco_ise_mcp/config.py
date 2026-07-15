@@ -61,6 +61,13 @@ class Config:
     max_page_size: int = 500
     include_raw_default: bool = False
 
+    # OAuth2 "Manual" mode (authorization_code) — confidential client for Copilot
+    # Studio etc. Empty client_id disables the /authorize + code/refresh grants.
+    oauth_client_id: str = ""
+    oauth_client_secret: str = ""
+    oauth_redirect_uris: list[str] = field(default_factory=list)
+    oauth_scopes: str = "ise.read"
+
     host: str = "0.0.0.0"
     port: int = 8005
     transport: str = "streamable-http"
@@ -124,6 +131,10 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         default_page_size=_int(env, "ISE_DEFAULT_PAGE_SIZE", 50),
         max_page_size=_int(env, "ISE_MAX_PAGE_SIZE", 500),
         include_raw_default=_bool(env, "ISE_INCLUDE_RAW_DEFAULT", False),
+        oauth_client_id=env.get("OAUTH_CLIENT_ID", ""),
+        oauth_client_secret=env.get("OAUTH_CLIENT_SECRET", ""),
+        oauth_redirect_uris=_csv(env, "OAUTH_REDIRECT_URIS"),
+        oauth_scopes=env.get("OAUTH_SCOPES", "ise.read"),
         host=env.get("MCP_HOST", "0.0.0.0"),
         port=_int(env, "MCP_PORT", 8005),
         transport=env.get("MCP_TRANSPORT", "streamable-http"),

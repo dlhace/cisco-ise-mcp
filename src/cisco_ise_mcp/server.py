@@ -15,6 +15,7 @@ from .ise.client import IseClient
 from .ise.ers import ErsApi
 from .ise.mnt import MntApi
 from .logging_config import configure_logging
+from .oauth import OAuthServer
 from .tools import Deps, register_all
 
 _log = logging.getLogger("cisco_ise_mcp.server")
@@ -42,37 +43,20 @@ def build(cfg: Config | None = None):
     deps = Deps(cfg=cfg, ers=ers, mnt=mnt, provider=provider)
     register_all(mcp, deps)
 
+    oauth = OAuthServer(cfg, provider) if isinstance(provider, PassthroughProvider) else None
+
     @mcp.custom_route("/healthz", methods=["GET"])
     async def _healthz(_request):  # noqa: ANN001
         from starlette.responses import JSONResponse
 
         return JSONResponse({"status": "ok", "mode": cfg.mcp_mode})
 
-    @mcp.custom_route("/token", methods=["POST"])
-    async def _token(request):  # noqa: ANN001
-        """OAuth2 client-credentials token endpoint (passthrough mode).
-
-        client_id/client_secret are the caller's ISE username/password (form body or
-        HTTP Basic). On success returns the MCP session id as a Bearer access_token,
-        which tools accept via `Authorization: Bearer` or the X-MCP-Session header.
-        Lets non-interactive OAuth clients (Copilot Studio, Claude, etc.) authenticate
-        with real ISE credentials. Secrets are never logged."""
+    def _client_creds(request, form):
+        """Pull client_id/client_secret from form body or HTTP Basic."""
         import base64
 
-        from starlette.responses import JSONResponse
-
-        if not isinstance(provider, PassthroughProvider):
-            return JSONResponse(
-                {"error": "invalid_request", "error_description": "token endpoint requires passthrough mode"},
-                status_code=400,
-            )
-        try:
-            form = await request.form()
-        except Exception:  # noqa: BLE001
-            form = {}
-        grant = (form.get("grant_type") or "").strip()
         cid, csec = form.get("client_id"), form.get("client_secret")
-        if not cid or not csec:  # RFC6749 client creds may arrive via HTTP Basic
+        if not cid or not csec:
             authz = request.headers.get("authorization", "")
             if authz[:6].lower() == "basic ":
                 try:
@@ -80,22 +64,100 @@ def build(cfg: Config | None = None):
                     cid, csec = cid or u, csec or p
                 except Exception:  # noqa: BLE001
                     pass
-        if grant != "client_credentials":
-            return JSONResponse({"error": "unsupported_grant_type"}, status_code=400)
-        if not cid or not csec:
-            return JSONResponse(
-                {"error": "invalid_request", "error_description": "missing client credentials"},
-                status_code=400,
-            )
+        return cid, csec
+
+    @mcp.custom_route("/token", methods=["POST"])
+    async def _token(request):  # noqa: ANN001
+        """OAuth2 token endpoint. Grants:
+          * client_credentials — client_id/secret ARE the ISE creds (Claude/programmatic).
+          * authorization_code / refresh_token — confidential OAUTH_CLIENT for Copilot
+            Studio etc.; the ISE identity was established at /authorize.
+        Secrets are never logged."""
+        from starlette.responses import JSONResponse
+
+        def out(body, status=200):
+            return JSONResponse(body, status_code=status, headers={"Cache-Control": "no-store"})
+
+        if not isinstance(provider, PassthroughProvider):
+            return out({"error": "invalid_request", "error_description": "requires passthrough mode"}, 400)
         try:
-            sess = await provider.login(cid, csec)
-        except Exception:  # noqa: BLE001  (fail closed; do not leak why)
-            return JSONResponse({"error": "invalid_client"}, status_code=401)
-        return JSONResponse(
-            {"access_token": sess.session_id, "token_type": "Bearer",
-             "expires_in": cfg.session_ttl_seconds},
-            headers={"Cache-Control": "no-store"},
-        )
+            form = await request.form()
+        except Exception:  # noqa: BLE001
+            form = {}
+        grant = (form.get("grant_type") or "").strip()
+        cid, csec = _client_creds(request, form)
+
+        if grant == "client_credentials":
+            if not cid or not csec:
+                return out({"error": "invalid_request", "error_description": "missing client credentials"}, 400)
+            try:
+                sess = await provider.login(cid, csec)  # cid/csec == ISE creds here
+            except Exception:  # noqa: BLE001
+                return out({"error": "invalid_client"}, 401)
+            return out({"access_token": sess.session_id, "token_type": "Bearer",
+                        "expires_in": cfg.session_ttl_seconds})
+
+        if grant == "authorization_code":
+            if oauth is None:
+                return out({"error": "invalid_request"}, 400)
+            resp, err = await oauth.exchange_code(
+                code=form.get("code"), redirect_uri=form.get("redirect_uri"),
+                client_id=cid, client_secret=csec, verifier=form.get("code_verifier"))
+            return out(resp) if resp else out({"error": err}, 401 if err == "invalid_client" else 400)
+
+        if grant == "refresh_token":
+            if oauth is None:
+                return out({"error": "invalid_request"}, 400)
+            resp, err = await oauth.refresh(
+                refresh_token=form.get("refresh_token"), client_id=cid, client_secret=csec)
+            return out(resp) if resp else out({"error": err}, 401 if err == "invalid_client" else 400)
+
+        return out({"error": "unsupported_grant_type"}, 400)
+
+    @mcp.custom_route("/authorize", methods=["GET"])
+    async def _authorize_get(request):  # noqa: ANN001
+        import secrets as _secrets
+
+        from starlette.responses import HTMLResponse, PlainTextResponse
+
+        if oauth is None:
+            return PlainTextResponse("OAuth authorization is not enabled", status_code=404)
+        q = request.query_params
+        if q.get("response_type") != "code":
+            return PlainTextResponse("unsupported_response_type", status_code=400)
+        if not _secrets.compare_digest(q.get("client_id", ""), cfg.oauth_client_id):
+            return PlainTextResponse("invalid client_id", status_code=400)
+        if not oauth.redirect_ok(q.get("redirect_uri")):
+            return PlainTextResponse("invalid redirect_uri", status_code=400)
+        params = {k: q.get(k, "") for k in
+                  ("client_id", "redirect_uri", "scope", "state", "code_challenge")}
+        return HTMLResponse(oauth.login_page(params))
+
+    @mcp.custom_route("/authorize", methods=["POST"])
+    async def _authorize_post(request):  # noqa: ANN001
+        import secrets as _secrets
+
+        from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+
+        if oauth is None:
+            return PlainTextResponse("OAuth authorization is not enabled", status_code=404)
+        form = await request.form()
+        cid, redirect_uri = form.get("client_id", ""), form.get("redirect_uri", "")
+        if not _secrets.compare_digest(cid, cfg.oauth_client_id) or not oauth.redirect_ok(redirect_uri):
+            return PlainTextResponse("invalid client or redirect_uri", status_code=400)
+        params = {k: form.get(k, "") for k in
+                  ("client_id", "redirect_uri", "scope", "state", "code_challenge")}
+        try:
+            code = await oauth.login_and_issue_code(
+                username=form.get("username", ""), password=form.get("password", ""),
+                client_id=cid, redirect_uri=redirect_uri,
+                scope=form.get("scope", ""), challenge=form.get("code_challenge", ""))
+        except Exception:  # noqa: BLE001 - bad ISE creds
+            return HTMLResponse(
+                oauth.login_page(params, error="Invalid ISE credentials. Please try again."),
+                status_code=401)
+        return RedirectResponse(
+            oauth.redirect_with_code(redirect_uri, code, form.get("state", "")), status_code=302)
 
     _log.info(
         "server_built",
