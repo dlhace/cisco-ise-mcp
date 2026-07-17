@@ -21,6 +21,48 @@ from .tools import Deps, register_all
 _log = logging.getLogger("cisco_ise_mcp.server")
 
 
+def _base_url_from_scope(scope) -> str:
+    headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+    host = headers.get("x-forwarded-host") or headers.get("host", "")
+    proto = headers.get("x-forwarded-proto", "https").split(",")[0].strip()
+    return f"{proto}://{host}"
+
+
+class RequireAuthOnMcp:
+    """ASGI gate: return HTTP 401 + WWW-Authenticate on /mcp when there's no valid
+    session (passthrough mode). This is what makes OAuth clients (Copilot Studio,
+    etc.) trigger their sign-in flow instead of silently calling tools unauthed.
+    Discovery/auth endpoints and health are left open."""
+
+    def __init__(self, app, deps: "Deps"):
+        self.app = app
+        self.deps = deps
+
+    def _sid(self, headers: dict) -> str | None:
+        sid = headers.get(self.deps.cfg.session_header.lower())
+        if not sid:
+            authz = headers.get("authorization", "")
+            if authz[:7].lower() == "bearer ":
+                sid = authz[7:].strip()
+        return sid
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("path", "").rstrip("/") == "/mcp" \
+                and self.deps.cfg.auth_mode == "passthrough":
+            headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+            if not self.deps.session_valid(self._sid(headers)):
+                base = _base_url_from_scope(scope)
+                www = f'Bearer resource_metadata="{base}/.well-known/oauth-protected-resource"'
+                await send({"type": "http.response.start", "status": 401, "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"www-authenticate", www.encode()),
+                ]})
+                await send({"type": "http.response.body",
+                            "body": b'{"error":"unauthorized","error_description":"Authenticate to use the ISE MCP tools"}'})
+                return
+        await self.app(scope, receive, send)
+
+
 def build(cfg: Config | None = None):
     """Construct (FastMCP, deps, client). Importing here keeps mcp/httpx optional
     for the stdlib-only unit tests."""
@@ -50,6 +92,30 @@ def build(cfg: Config | None = None):
         from starlette.responses import JSONResponse
 
         return JSONResponse({"status": "ok", "mode": cfg.mcp_mode})
+
+    @mcp.custom_route("/.well-known/oauth-protected-resource", methods=["GET"])
+    async def _prm(request):  # noqa: ANN001
+        from starlette.responses import JSONResponse
+
+        base = _base_url_from_scope(request.scope)
+        return JSONResponse({"resource": f"{base}/mcp", "authorization_servers": [base],
+                             "scopes_supported": [cfg.oauth_scopes]})
+
+    @mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET"])
+    async def _asm(request):  # noqa: ANN001
+        from starlette.responses import JSONResponse
+
+        base = _base_url_from_scope(request.scope)
+        return JSONResponse({
+            "issuer": base,
+            "authorization_endpoint": f"{base}/authorize",
+            "token_endpoint": f"{base}/token",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials"],
+            "code_challenge_methods_supported": ["S256"],
+            "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
+            "scopes_supported": [cfg.oauth_scopes],
+        })
 
     def _client_creds(request, form):
         """Pull client_id/client_secret from form body or HTTP Basic."""
@@ -171,9 +237,16 @@ def build_http_app(cfg: Config | None = None):
 
     The MCP session id is read per-call from the request context inside the tools
     (see tools.mcp_session_id); /healthz is a FastMCP custom route registered in
-    build(); the httpx client is closed at process exit."""
-    mcp, _deps, _client = build(cfg)
-    return mcp.streamable_http_app()
+    build(); the httpx client is closed at process exit.
+
+    /mcp is wrapped in RequireAuthOnMcp: when the session is missing/expired it
+    returns HTTP 401 + WWW-Authenticate. That is what makes the OAuth client
+    (Copilot Studio) transparently REFRESH the token and retry — i.e. auto-renew a
+    new session when the old one expires — instead of getting a soft error and
+    giving up. With maker-provided credentials the refresh is silent (no user
+    prompt)."""
+    mcp, deps, _client = build(cfg)
+    return RequireAuthOnMcp(mcp.streamable_http_app(), deps)
 
 
 def main() -> None:

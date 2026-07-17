@@ -54,6 +54,12 @@ class Deps:
     def session_id(self) -> str | None:
         return mcp_session_id(self.cfg.session_header)
 
+    def session_valid(self, sid: str | None) -> bool:
+        """True if `sid` maps to a live session (passthrough). Used by the HTTP
+        auth gate to decide whether to 401."""
+        fn = getattr(self.provider, "session_valid", None)
+        return bool(fn) and fn(sid)
+
     async def resolve_auth(self) -> AuthContext:
         return await self.provider.resolve(session_id=self.session_id())
 

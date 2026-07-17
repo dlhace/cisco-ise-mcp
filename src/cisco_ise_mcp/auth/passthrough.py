@@ -36,6 +36,9 @@ class PassthroughProvider(AuthProvider):
     def logout(self, session_id: str) -> bool:
         return self._store.delete(session_id)
 
+    def session_valid(self, session_id: str | None) -> bool:
+        return bool(session_id) and self._store.get(session_id) is not None
+
     async def resolve(self, *, session_id: str | None) -> AuthContext:
         sess = self._store.get(session_id)
         if sess is None:
