@@ -1,5 +1,5 @@
 # Sample READ/WRITE Cloud Foundry manifest. COPY to manifest-rw.yml (gitignored) and edit.
-# Target org/space: ESM / POC. No real secrets — inject via your pipeline/secret store.
+# Target org/space: <your-org> / <your-space>. No real secrets — inject via your pipeline/secret store.
 # Read/write prefers passthrough so writes run as the authenticated ISE user (ISE RBAC applies).
 ---
 applications:

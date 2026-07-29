@@ -94,7 +94,7 @@ docker compose up --build
 
 ## Cloud Foundry
 
-Target: **ORG `ESM` / SPACE `POC`**. Two apps: `cisco-ise-mcp-ro` and `cisco-ise-mcp-rw`.
+Target: **ORG `<your-org>` / SPACE `<your-space>`**. Two apps: `cisco-ise-mcp-ro` and `cisco-ise-mcp-rw`.
 
 Only **sample** manifests are committed. Real manifests (`manifest.yml`, `manifest-ro.yml`,
 `manifest-rw.yml`) are **gitignored** because they carry environment-specific values:
@@ -105,7 +105,7 @@ cf push -f manifest-ro.yml
 ```
 
 Secrets must come from your approved pipeline/secret mechanism into CF env vars — never
-commit them into manifests or VCAP. The external route (`cisco-ise-mcp.churchofjesuschrist.org`)
+commit them into manifests or VCAP. The external route (`cisco-ise-mcp.example.com`)
 is fronted by F5 later; nothing in this repo assumes F5 details. See
 [docs/cloud-foundry.md](docs/cloud-foundry.md).
 

@@ -1,5 +1,5 @@
 # Sample READ-ONLY Cloud Foundry manifest. COPY to manifest-ro.yml (gitignored) and edit.
-# Target org/space: ESM / POC. No real secrets — inject via your pipeline/secret store.
+# Target org/space: <your-org> / <your-space>. No real secrets — inject via your pipeline/secret store.
 ---
 applications:
   - name: cisco-ise-mcp-ro
@@ -14,7 +14,7 @@ applications:
     routes:
       # Internal default-domain route validated first; external route fronted by F5 later.
       - route: cisco-ise-mcp.<cloudfoundry-default-domain>
-      - route: cisco-ise-mcp.churchofjesuschrist.org
+      - route: cisco-ise-mcp.example.com
     env:
       MCP_TRANSPORT: streamable-http
       MCP_PORT: "8080"

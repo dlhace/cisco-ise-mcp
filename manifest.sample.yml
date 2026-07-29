@@ -1,5 +1,5 @@
 # Sample base Cloud Foundry manifest. COPY to manifest.yml (gitignored) and edit.
-# Target org/space: ESM / POC. No real secrets here — inject via your pipeline.
+# Target org/space: <your-org> / <your-space>. No real secrets here — inject via your pipeline.
 ---
 applications:
   - name: cisco-ise-mcp

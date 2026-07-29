@@ -1,10 +1,10 @@
 # Cloud Foundry deployment
 
-Target: **ORG `ESM` / SPACE `POC`**. Two apps:
+Target: **ORG `<your-org>` / SPACE `<your-space>`**. Two apps:
 
 | App | Mode | Auth | Route(s) |
 |-----|------|------|----------|
-| `cisco-ise-mcp-ro` | readonly | service_account (or passthrough) | `cisco-ise-mcp.<default-domain>`, `cisco-ise-mcp.churchofjesuschrist.org` |
+| `cisco-ise-mcp-ro` | readonly | service_account (or passthrough) | `cisco-ise-mcp.<default-domain>`, `cisco-ise-mcp.example.com` |
 | `cisco-ise-mcp-rw` | readwrite | passthrough | `cisco-ise-mcp-rw.<default-domain>` |
 
 ## Manifests
@@ -12,7 +12,7 @@ Target: **ORG `ESM` / SPACE `POC`**. Two apps:
 Only `*.sample.yml` are committed. Copy to real (gitignored) files and edit:
 
 ```bash
-cf target -o ESM -s POC
+cf target -o <your-org> -s <your-space>
 cp manifest-ro.sample.yml manifest-ro.yml
 cp manifest-rw.sample.yml manifest-rw.yml
 # edit routes + ISE_BASE_URL; leave secrets to the pipeline
@@ -49,5 +49,5 @@ source-controlled manifests.
 
 ## External route / F5
 
-The `churchofjesuschrist.org` route is fronted by **F5 after validation**. This repo assumes
+The `example.com` route is fronted by **F5 after validation**. This repo assumes
 no F5 details; validate on the default-domain route first, then coordinate the external VIP.

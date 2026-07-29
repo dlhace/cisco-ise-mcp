@@ -13,16 +13,16 @@ FIX = pathlib.Path(__file__).parent / "fixtures"
 def test_summarize_ers_endpoint_wrapper():
     raw = json.loads((FIX / "endpoint_ers.json").read_text())
     s = summarize_endpoint(raw)
-    assert s.mac == "F8:ED:FC:F6:3C:3E"
-    assert s.endpoint_id == "bb4430b0-0000-0000-0000-000000000000"
+    assert s.mac == "AA:BB:CC:DD:EE:FF"
+    assert s.endpoint_id == "00000000-0000-0000-0000-000000000000"
     assert s.static_group_assignment is True
     assert s.identity_group_id
 
 
 def test_normalize_mac_variants():
-    assert normalize_mac("f8edfcf63c3e") == "F8:ED:FC:F6:3C:3E"
-    assert normalize_mac("f8-ed-fc-f6-3c-3e") == "F8:ED:FC:F6:3C:3E"
-    assert normalize_mac("F8:ED:FC:F6:3C:3E") == "F8:ED:FC:F6:3C:3E"
+    assert normalize_mac("aabbccddeeff") == "AA:BB:CC:DD:EE:FF"
+    assert normalize_mac("aa-bb-cc-dd-ee-ff") == "AA:BB:CC:DD:EE:FF"
+    assert normalize_mac("AA:BB:CC:DD:EE:FF") == "AA:BB:CC:DD:EE:FF"
 
 
 def test_normalize_mac_rejects_bad():

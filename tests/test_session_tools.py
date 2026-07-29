@@ -11,9 +11,9 @@ def test_parse_and_summarize_session_xml():
     parsed = _xml_to_dict(xml)
     assert parsed  # non-empty dict
     summary = summarize_session(parsed)
-    assert summary.username == "host/printer-r7-117"
-    assert summary.ip_address == "10.89.26.77"
-    assert summary.nas_ip == "10.89.0.1"
+    assert summary.username == "host/example-printer"
+    assert summary.ip_address == "192.0.2.77"
+    assert summary.nas_ip == "192.0.2.1"
 
 
 def test_empty_xml_is_empty_dict():

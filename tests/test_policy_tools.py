@@ -5,16 +5,16 @@ from cisco_ise_mcp.tools.policy import _narrative
 
 def test_narrative_with_endpoint_and_session():
     ctx = PolicyContext(
-        mac="F8:ED:FC:F6:3C:3E",
+        mac="AA:BB:CC:DD:EE:FF",
         endpoint=EndpointSummary(
-            mac="F8:ED:FC:F6:3C:3E",
-            name="F8:ED:FC:F6:3C:3E",
-            ip_address="10.89.26.77",
+            mac="AA:BB:CC:DD:EE:FF",
+            name="AA:BB:CC:DD:EE:FF",
+            ip_address="192.0.2.77",
             identity_group="Campus_TEST_GROUP",
             profile="HP-JetDirect-Printer",
             static_group_assignment=True,
         ),
-        active_session=SessionSummary(username="host/printer", nas_ip="10.89.0.1", state="STARTED"),
+        active_session=SessionSummary(username="host/example-printer", nas_ip="192.0.2.1", state="STARTED"),
         security_group="Printers",
     )
     text = _narrative(ctx)

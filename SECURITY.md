@@ -2,7 +2,7 @@
 
 ## Reporting
 
-Report vulnerabilities to the ICS Engineering security contact through internal channels.
+Report vulnerabilities to the maintainers through internal channels.
 Do not open public issues for security problems.
 
 ## Secret handling — hard rules
