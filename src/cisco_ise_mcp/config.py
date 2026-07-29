@@ -68,6 +68,13 @@ class Config:
     oauth_redirect_uris: list[str] = field(default_factory=list)
     oauth_scopes: str = "ise.read"
 
+    # Static bearer tokens (API keys) that map to the fixed ISE_USERNAME/ISE_PASSWORD
+    # account. A caller presenting one of these authenticates as that account with NO
+    # login, NO session expiry, and NO per-user credential ever held in memory. Used
+    # for non-interactive OAuth-less clients (e.g. Copilot Studio "API key" auth) that
+    # must not re-prompt for a username/password on reconnect.
+    api_keys: list[str] = field(default_factory=list)
+
     host: str = "0.0.0.0"
     port: int = 8005
     transport: str = "streamable-http"
@@ -100,6 +107,11 @@ class Config:
             )
         if self.max_page_size < self.default_page_size:
             raise ValueError("ISE_MAX_PAGE_SIZE must be >= ISE_DEFAULT_PAGE_SIZE")
+        if self.api_keys and not (self.ise_username and self.ise_password):
+            raise ValueError(
+                "MCP_API_KEYS requires ISE_USERNAME and ISE_PASSWORD (the fixed read-only "
+                "account those tokens map to)"
+            )
 
 
 def load_config(env: Mapping[str, str] | None = None) -> Config:
@@ -135,6 +147,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         oauth_client_secret=env.get("OAUTH_CLIENT_SECRET", ""),
         oauth_redirect_uris=_csv(env, "OAUTH_REDIRECT_URIS"),
         oauth_scopes=env.get("OAUTH_SCOPES", "ise.read"),
+        api_keys=_csv(env, "MCP_API_KEYS"),
         host=env.get("MCP_HOST", "0.0.0.0"),
         port=_int(env, "MCP_PORT", 8005),
         transport=env.get("MCP_TRANSPORT", "streamable-http"),

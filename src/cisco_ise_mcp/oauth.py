@@ -27,7 +27,6 @@ from dataclasses import dataclass
 from .config import Config
 
 CODE_TTL = 120  # seconds
-REFRESH_TTL = 7 * 24 * 3600  # 7 days
 
 
 @dataclass
@@ -36,18 +35,21 @@ class _Code:
     redirect_uri: str
     scope: str
     session_id: str
-    username: str
-    password: str  # held in memory only, for refresh re-validation
     challenge: str
     created: float
 
 
 class OAuthServer:
+    """Self-contained OAuth2 AS. NO user credentials are stored in memory: the
+    authorization code carries only the already-created session id. There is no
+    refresh grant — when a session expires the client re-authenticates. (For a
+    non-interactive fixed identity that must never re-prompt, use MCP_API_KEYS
+    instead, which map to the configured ISE service account.)"""
+
     def __init__(self, cfg: Config, provider):
         self.cfg = cfg
         self.provider = provider  # PassthroughProvider
         self._codes: dict[str, _Code] = {}
-        self._refresh: dict[str, tuple[str, str, float]] = {}
         self._lock = threading.Lock()  # ponytail: one global lock; fine single-instance
 
     @property
@@ -76,9 +78,7 @@ class OAuthServer:
                 client_id=client_id,
                 redirect_uri=redirect_uri,
                 scope=scope or self.cfg.oauth_scopes,
-                session_id=sess.session_id,
-                username=username,
-                password=password,
+                session_id=sess.session_id,  # only the session id is retained, never the password
                 challenge=challenge or "",
                 created=time.time(),
             )
@@ -117,30 +117,15 @@ class OAuthServer:
             return None, "invalid_grant"
         if not self._pkce_ok(rec, verifier):
             return None, "invalid_grant"
-        resp = self._base_token(rec.session_id, rec.scope)
-        rt = secrets.token_urlsafe(32)
-        with self._lock:
-            self._refresh[rt] = (rec.username, rec.password, time.time())
-        resp["refresh_token"] = rt
-        return resp, None
+        # No refresh_token: we don't retain credentials, so expiry -> re-authenticate.
+        return self._base_token(rec.session_id, rec.scope), None
 
     async def refresh(self, *, refresh_token, client_id, client_secret):
+        """Refresh is intentionally unsupported (no stored credentials). The client
+        must re-run the authorization_code flow when its session expires."""
         if not self.client_ok(client_id, client_secret):
             return None, "invalid_client"
-        with self._lock:
-            rec = self._refresh.get(refresh_token)
-        if not rec or time.time() - rec[2] > REFRESH_TTL:
-            return None, "invalid_grant"
-        username, password, _ = rec
-        try:
-            sess = await self.provider.login(username, password)  # re-validate against ISE
-        except Exception:  # noqa: BLE001 - creds revoked/invalid now
-            with self._lock:
-                self._refresh.pop(refresh_token, None)
-            return None, "invalid_grant"
-        resp = self._base_token(sess.session_id, self.cfg.oauth_scopes)
-        resp["refresh_token"] = refresh_token  # non-rotating (single-instance v1)
-        return resp, None
+        return None, "invalid_grant"
 
     # ---- login page ----
     def login_page(self, params: dict, error: str = "") -> str:
@@ -234,11 +219,10 @@ def demo() -> None:
         )
         r, e = await srv.exchange_code(code=code, redirect_uri="https://cb/redirect",
                                        client_id="cid", client_secret="csec", verifier=verifier)
-        assert e is None and r["access_token"] == "sess-alice" and "refresh_token" in r
-        rt = r["refresh_token"]
-        # refresh works
-        r2, e2 = await srv.refresh(refresh_token=rt, client_id="cid", client_secret="csec")
-        assert e2 is None and r2["access_token"] == "sess-alice"
+        assert e is None and r["access_token"] == "sess-alice" and "refresh_token" not in r
+        # refresh is unsupported (no stored creds) -> invalid_grant
+        r2, e2 = await srv.refresh(refresh_token="anything", client_id="cid", client_secret="csec")
+        assert r2 is None and e2 == "invalid_grant"
         # bad login -> raises inside login_and_issue_code
         try:
             await srv.login_and_issue_code(username="bob", password="bad", client_id="cid",

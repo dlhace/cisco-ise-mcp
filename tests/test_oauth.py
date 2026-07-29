@@ -39,7 +39,7 @@ def test_client_and_redirect_validation():
     assert not s.redirect_ok("https://evil/cb")
 
 
-def test_auth_code_exchange_and_refresh():
+def test_auth_code_exchange_no_refresh_no_stored_creds():
     s = _srv()
     verifier = "verifier-string-1234567890abcdef"
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
@@ -54,9 +54,12 @@ def test_auth_code_exchange_and_refresh():
         assert err is None
         assert resp["access_token"] == "sess-alice"
         assert resp["token_type"] == "Bearer"
-        assert "refresh_token" in resp
-        r2, e2 = await s.refresh(refresh_token=resp["refresh_token"], client_id="cid", client_secret="csec")
-        assert e2 is None and r2["access_token"] == "sess-alice"
+        # no refresh token issued, and no credentials retained anywhere
+        assert "refresh_token" not in resp
+        assert s._codes == {}  # code consumed; nothing left holding creds
+        # refresh is unsupported -> forces re-authentication
+        r2, e2 = await s.refresh(refresh_token="x", client_id="cid", client_secret="csec")
+        assert r2 is None and e2 == "invalid_grant"
 
     asyncio.run(go())
 

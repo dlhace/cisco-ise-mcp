@@ -36,7 +36,7 @@ def mcp_session_id(header_name: str) -> str | None:
     headers = getattr(getattr(rc, "request", None), "headers", None)
     if not headers:
         return None
-    sid = headers.get(header_name) or headers.get(header_name.lower())
+    sid = headers.get("x-api-key") or headers.get(header_name) or headers.get(header_name.lower())
     if not sid:
         authz = headers.get("authorization", "")
         if authz.lower().startswith("bearer "):
@@ -54,14 +54,29 @@ class Deps:
     def session_id(self) -> str | None:
         return mcp_session_id(self.cfg.session_header)
 
-    def session_valid(self, sid: str | None) -> bool:
-        """True if `sid` maps to a live session (passthrough). Used by the HTTP
-        auth gate to decide whether to 401."""
+    def _is_api_key(self, tok: str | None) -> bool:
+        import secrets
+
+        return bool(tok) and any(secrets.compare_digest(tok, k) for k in self.cfg.api_keys)
+
+    def session_valid(self, tok: str | None) -> bool:
+        """True if `tok` is a configured API key OR maps to a live passthrough session.
+        Used by the HTTP auth gate to decide whether to 401."""
+        if self._is_api_key(tok):
+            return True
         fn = getattr(self.provider, "session_valid", None)
-        return bool(fn) and fn(sid)
+        return bool(fn) and fn(tok)
 
     async def resolve_auth(self) -> AuthContext:
-        return await self.provider.resolve(session_id=self.session_id())
+        """A valid API key maps to the fixed ISE service account (no session, no
+        expiry, no per-user credential in memory). Otherwise fall back to the
+        provider (passthrough session / service account)."""
+        tok = self.session_id()
+        if self._is_api_key(tok):
+            return AuthContext(
+                username=self.cfg.ise_username, mode="api_key", _password=self.cfg.ise_password
+            )
+        return await self.provider.resolve(session_id=tok)
 
 
 async def run(

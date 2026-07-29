@@ -39,7 +39,7 @@ class RequireAuthOnMcp:
         self.deps = deps
 
     def _sid(self, headers: dict) -> str | None:
-        sid = headers.get(self.deps.cfg.session_header.lower())
+        sid = headers.get("x-api-key") or headers.get(self.deps.cfg.session_header.lower())
         if not sid:
             authz = headers.get("authorization", "")
             if authz[:7].lower() == "bearer ":
